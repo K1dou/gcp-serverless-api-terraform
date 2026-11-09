@@ -1,2 +1,5 @@
 bucket = "gcp-serverless-api-terraform-bucket"
-prefix = "bootstrap"
+prefix = "envs/dev"
+
+
+# -backend-config=backend.hcl
