@@ -8,5 +8,8 @@ module "network" {
   region = var.region
   ip_cidr_range = "10.2.0.0/24"
 
+  router_name="router-dev"
+  nat_name="nat-dev"
+
 depends_on = [ google_project_service.apis ]
 }
