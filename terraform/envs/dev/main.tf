@@ -18,5 +18,23 @@ module "database" {
   source = "../../modules/database"
   region = var.region
   network = module.network.network_id
-  name_instance_database = "dev-database"
+  name_instance_database = "dev-instance"
+  database_name = "dev_database"
+  project = var.project_id
+
+  depends_on = [ google_project_service.apis ]
+
+}
+
+module "service" {
+  source = "../../modules/service"
+  secret_id = module.database.secret_id
+  project = var.project_id
+  repository_id = "api-dev-repository"
+  region = var.region 
+  network = module.network.network_id 
+  subnetwork = module.network.subnet_id
+
+  depends_on = [ google_project_service.apis ]
+
 }
