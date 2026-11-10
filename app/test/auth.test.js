@@ -135,14 +135,8 @@ afterEach(async ()=>{
 
 describe("POST /refresh",()=>{
 
-    it('should return a status 200 and renew the tokens',async () => {
-
-        const {user, agent} = await createAndLoginUser()
-
-        const tokenAntigo = agent.
-
-        
-    });
+    // Teste ainda nao escrito: a linha incompleta anterior quebrava o arquivo inteiro.
+    it.todo('should return a status 200 and renew the tokens')
 
 
 })
