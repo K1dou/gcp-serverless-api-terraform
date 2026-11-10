@@ -13,3 +13,10 @@ module "network" {
 
 depends_on = [ google_project_service.apis ]
 }
+
+module "database" {
+  source = "../../modules/database"
+  region = var.region
+  network = module.network.network_id
+  name_instance_database = "dev-database"
+}
