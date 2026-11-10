@@ -21,6 +21,7 @@ module "database" {
   name_instance_database = "dev-instance"
   database_name = "dev_database"
   project = var.project_id
+  secret_id = "password_database"
 
   depends_on = [ google_project_service.apis ]
 
@@ -34,6 +35,8 @@ module "service" {
   region = var.region 
   network = module.network.network_id 
   subnetwork = module.network.subnet_id
+
+  cloud_run_name = "cloudrun-api"
 
   depends_on = [ google_project_service.apis ]
 

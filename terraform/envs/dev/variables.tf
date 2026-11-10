@@ -1,15 +1,10 @@
 variable "project_id" {
   type        = string
-  description = "ID do projeto GCP onde o bucket do state será criado."
+  description = "ID do projeto GCP onde os recursos do ambiente dev são criados."
 }
 
 variable "region" {
   type        = string
-  description = "Localização do bucket de state."
+  description = "Região padrão dos recursos do ambiente dev."
   default     = "us-central1"
 }
-
-
-
-
-

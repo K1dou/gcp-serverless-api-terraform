@@ -11,11 +11,13 @@ resource "google_compute_subnetwork" "subnet_network" {
   ip_cidr_range = var.ip_cidr_range
   region        = var.region
   network       = google_compute_network.vpc_network.id
+
+  private_ip_google_access = true
 }
 
 
 
-resource "google_compute_firewall" "fw-database-ingress" {
+resource "google_compute_firewall" "fw_database_ingress" {
   project     = var.project_name
   name        = "fw-database-ingress"
   network     = google_compute_network.vpc_network.id
@@ -28,7 +30,7 @@ resource "google_compute_firewall" "fw-database-ingress" {
   }
 
   source_ranges = [ google_compute_subnetwork.subnet_network.ip_cidr_range ]
-  target_tags = ["web"]
+  
 }
 
 resource "google_compute_firewall" "deny_all_external_ingress" {
