@@ -12,7 +12,8 @@ export const createAndLoginUser = async (overrides = {})=>{
             data:{
                 name: overrides.name ?? 'Teste',
                 email: overrides.email?? 'teste@gmail.com',
-                password: await bcrypt.hash(password,10)
+                password: await bcrypt.hash(password,10),
+                role: overrides.role ?? 'CUSTOMER'
             }
     })
 
