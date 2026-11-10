@@ -30,7 +30,7 @@ resource "google_secret_manager_secret_iam_member" "api_secret_accessor" { #aces
 
 
 resource "google_cloud_run_v2_service" "default" {
-  name     = "cloudrun-api"
+  name     = var.cloud_run_name
   location = var.region
   deletion_protection = false
   ingress = "INGRESS_TRAFFIC_ALL"

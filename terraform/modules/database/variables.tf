@@ -22,3 +22,15 @@ variable "project" {
   type        = string
   description = "ID do projeto GCP onde o banco será criado."
 }
+
+
+variable "db_deletion_protection" {
+  type        = bool
+  description = "Define se a instância do banco de dados possui proteção contra destruição acidental"
+  default     = false 
+}
+
+variable "secret_id" {
+  type = string
+  description = "Define o nome para a secret no secret manager"
+}

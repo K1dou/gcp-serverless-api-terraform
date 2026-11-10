@@ -30,13 +30,13 @@ resource "google_sql_database_instance" "instance" {
     }
   }
 
-  deletion_protection  = false
+  deletion_protection  = var.db_deletion_protection
 
   depends_on = [ google_service_networking_connection.connection_psa ]
 }
 
 resource "google_secret_manager_secret" "db_secret" {
-  secret_id = "postgres-db-password"
+  secret_id = var.secret_id
 
   # Em vez de fixar uma região aqui, dizemos que o Google replica ele automaticamente
   replication {

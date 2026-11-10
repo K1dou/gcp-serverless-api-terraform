@@ -27,3 +27,8 @@ variable "subnetwork" {
   type        = string
   description = "ID da sub-rede usada pelo Cloud Run para sair para a VPC (output subnet_id do módulo network)."
 }
+
+variable "cloud_run_name" {
+  type = string
+  description = "Nome para o serviço cloud Run "
+}
