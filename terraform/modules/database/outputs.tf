@@ -9,11 +9,11 @@ output "db_private_ip" {
 }
 
 output "secret_id" {
-  value       = google_secret_manager_regional_secret.regional-secret-cloud-sql-db-credentials.id
+  value       = google_secret_manager_secret.db_secret.id
   description = "O ID do recurso do Secret Manager onde a senha está guardada"
 }
 
 output "secret_name" {
-  value       = google_secret_manager_regional_secret.regional-secret-cloud-sql-db-credentials.secret_id
+  value       = google_secret_manager_secret.db_secret.secret_id
   description = "O nome descritivo do segredo"
 }
