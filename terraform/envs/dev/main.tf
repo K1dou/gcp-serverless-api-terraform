@@ -36,7 +36,7 @@ module "service" {
   network = module.network.network_id 
   subnetwork = module.network.subnet_id
 
-  cloud_run_name = "cloud_run_api"
+  cloud_run_name = "cloudrun-api"
 
   depends_on = [ google_project_service.apis ]
 
