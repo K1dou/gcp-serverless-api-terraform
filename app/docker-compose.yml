@@ -1,0 +1,22 @@
+# docker compose up -d
+# docker compose stop
+
+services:
+  postgres:
+    container_name: sales-api
+    image: postgres
+    ports:
+      - 5436:5432
+    environment:
+      - POSTGRES_USER=docker
+      - POSTGRES_PASSWORD=docker
+      - POSTGRES_DB=sales-api
+  postgres_test:
+    container_name: sales-api-test
+    image: postgres
+    ports:
+      - 5437:5432
+    environment:
+      - POSTGRES_USER=docker_test
+      - POSTGRES_PASSWORD=docker_test
+      - POSTGRES_DB=sales-api-test
