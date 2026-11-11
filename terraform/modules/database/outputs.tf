@@ -17,3 +17,13 @@ output "secret_name" {
   value       = google_secret_manager_secret.db_secret.secret_id
   description = "O nome descritivo do segredo"
 }
+
+output "db_url_secret_id" {
+  value       = google_secret_manager_secret.api_db_url_secret.secret_id
+  description = "ID do segredo com a URL de conexão (DATABASE_URL) que a API lê."
+}
+
+output "db_url_secret_version" {
+  value       = google_secret_manager_secret_version.api_db_url_version.version
+  description = "Número da versão do segredo da URL de conexão. Depender dele garante que a versão exista antes do Cloud Run."
+}
