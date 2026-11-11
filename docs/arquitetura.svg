@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" width="1200" height="780" role="img" aria-labelledby="t d">
+  <title id="t">Arquitetura do gcp-serverless-api-terraform</title>
+  <desc id="d">O usuário acessa o Cloud Run, que lê a senha no Secret Manager e fala com o Cloud SQL, sem IP público, pela VPC. O GitHub Actions entra no projeto pela Workload Identity e usa a deploy-sa para publicar a imagem no Artifact Registry. O state do Terraform fica num bucket GCS.</desc>
+  <style>
+    .sans { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .title { font-size: 28px; font-weight: 700; fill: #eef5f9; }
+    .subtitle { font-size: 15px; fill: #9bb0bf; }
+    .zlabel { font-size: 12px; font-weight: 700; letter-spacing: .12em; fill: #9bb0bf; }
+    .zpath { font-size: 12px; fill: #9bb0bf; }
+    .note { font-size: 12px; fill: #9bb0bf; }
+    .n-title { font-size: 17px; font-weight: 700; fill: #eef5f9; }
+    .n-sub { font-size: 13px; fill: #b0c3d1; }
+    .n-path { font-size: 11.5px; fill: #7f96a6; }
+    .node rect.box { fill: #16262f; stroke: #4f9fc9; stroke-width: 1.8; }
+    .node.main rect.box { stroke: #7cc4ee; stroke-width: 2.6; }
+    .edge { fill: none; stroke: #b4c7d4; stroke-width: 1.7; marker-end: url(#arr); }
+    .elabel { font-size: 12px; fill: #c7d6e0; paint-order: stroke; stroke: #101f29; stroke-width: 5px; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#14252f" stroke-width="1"/></pattern>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#b4c7d4"/></marker>
+  </defs>
+
+  <!-- fundo -->
+  <rect width="1200" height="780" rx="18" fill="#0d1a22"/>
+  <rect width="1200" height="780" rx="18" fill="url(#grid)"/>
+  <rect x="1" y="1" width="1198" height="778" rx="18" fill="none" stroke="#2b4352" stroke-width="2"/>
+
+  <!-- cabeçalho -->
+  <text class="sans title" x="40" y="58">gcp-serverless-api-terraform</text>
+  <text class="sans subtitle" x="40" y="86">API Node.js no Cloud Run, banco sem IP público e infraestrutura 100% em Terraform</text>
+
+  <!-- zona do projeto -->
+  <rect x="240" y="116" width="920" height="632" rx="12" fill="#101f29" stroke="#3c5769" stroke-width="1.6"/>
+  <text class="sans zlabel" x="264" y="146">PROJETO GCP</text>
+  <text class="mono zpath" x="372" y="146">us-central1</text>
+
+  <!-- VPC -->
+  <rect x="560" y="170" width="570" height="332" rx="10" fill="#101f29" stroke="#4f9fc9" stroke-width="1.8"/>
+  <text class="sans zlabel" x="584" y="198">VPC</text>
+  <text class="mono zpath" x="626" y="198">vpc-dev · modules/network</text>
+  <rect x="584" y="216" width="522" height="256" rx="8" fill="#0b1920" stroke="#3c5769" stroke-width="1.4" stroke-dasharray="4 5"/>
+  <text class="sans zlabel" x="606" y="244">SUB-REDE</text>
+  <text class="mono zpath" x="690" y="244">subnet-dev · 10.2.0.0/24</text>
+  <text class="mono note" x="606" y="264">Private Google Access ligado</text>
+  <text class="mono note" x="584" y="492">firewall: entrada externa bloqueada (deny 0.0.0.0/0)</text>
+
+  <!-- setas -->
+  <path class="edge" d="M190 348H270"/>
+  <text class="mono elabel" x="230" y="338" text-anchor="middle">HTTPS</text>
+
+  <path class="edge" d="M470 348H616"/>
+  <text class="mono elabel" x="543" y="338" text-anchor="middle">egress VPC</text>
+
+  <path class="edge" d="M370 254V298"/>
+  <text class="mono elabel" x="384" y="282">lê a senha</text>
+
+  <path class="edge" d="M370 450V398"/>
+  <text class="mono elabel" x="384" y="430">imagem</text>
+
+  <path class="edge" d="M605 580V556H370V534"/>
+  <text class="mono elabel" x="487" y="548" text-anchor="middle">publica</text>
+
+  <path class="edge" d="M210 622H270"/>
+  <path class="edge" d="M470 622H520"/>
+
+  <!-- coluna esquerda -->
+  <g class="node" transform="translate(40,313)">
+    <rect class="box" width="150" height="70" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Usuário</text>
+    <text class="sans n-sub" x="16" y="52">cliente HTTP</text>
+  </g>
+
+  <g class="node" transform="translate(270,170)">
+    <rect class="box" width="200" height="84" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Secret Manager</text>
+    <text class="sans n-sub" x="16" y="50">senha do banco</text>
+    <text class="mono n-path" x="16" y="68">modules/database</text>
+  </g>
+
+  <g class="node main" transform="translate(270,298)">
+    <rect class="box" width="200" height="100" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Cloud Run</text>
+    <text class="sans n-sub" x="16" y="50">API Node.js · Express</text>
+    <text class="sans n-sub" x="16" y="67">escala a zero</text>
+    <text class="mono n-path" x="16" y="86">modules/service</text>
+  </g>
+
+  <g class="node" transform="translate(270,450)">
+    <rect class="box" width="200" height="84" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Artifact Registry</text>
+    <text class="sans n-sub" x="16" y="50">imagens do container</text>
+    <text class="mono n-path" x="16" y="68">modules/service</text>
+  </g>
+
+  <!-- dentro da sub-rede -->
+  <g class="node main" transform="translate(616,298)">
+    <rect class="box" width="220" height="100" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Cloud SQL</text>
+    <text class="sans n-sub" x="16" y="50">Postgres · somente IP privado</text>
+    <text class="sans n-sub" x="16" y="67">peering privado do Google</text>
+    <text class="mono n-path" x="16" y="86">modules/database</text>
+  </g>
+
+  <g class="node" transform="translate(872,298)">
+    <rect class="box" width="210" height="100" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Cloud NAT</text>
+    <text class="sans n-sub" x="16" y="50">saída sem IP público</text>
+    <text class="sans n-sub" x="16" y="67">Cloud Router</text>
+    <text class="mono n-path" x="16" y="86">modules/network</text>
+  </g>
+
+  <!-- faixa de identidade e CI -->
+  <g class="node" transform="translate(40,582)">
+    <rect class="box" width="170" height="80" rx="10"/>
+    <text class="sans n-title" x="16" y="30">GitHub Actions</text>
+    <text class="mono n-path" x="16" y="52">terraform.yml</text>
+    <text class="mono n-path" x="16" y="68">deploy.yml</text>
+  </g>
+
+  <g class="node" transform="translate(270,580)">
+    <rect class="box" width="200" height="84" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Workload Identity</text>
+    <text class="sans n-sub" x="16" y="50">OIDC do GitHub, sem chave</text>
+    <text class="mono n-path" x="16" y="68">terraform/bootstrap</text>
+  </g>
+
+  <g class="node" transform="translate(520,580)">
+    <rect class="box" width="170" height="84" rx="10"/>
+    <text class="sans n-title" x="16" y="30">deploy-sa</text>
+    <text class="sans n-sub" x="16" y="50">publica e faz deploy</text>
+    <text class="mono n-path" x="16" y="68">terraform/bootstrap</text>
+  </g>
+
+  <g class="node" transform="translate(740,580)">
+    <rect class="box" width="170" height="84" rx="10"/>
+    <text class="sans n-title" x="16" y="30">api-sa</text>
+    <text class="sans n-sub" x="16" y="50">menor privilégio</text>
+    <text class="mono n-path" x="16" y="68">modules/service</text>
+  </g>
+
+  <g class="node" transform="translate(950,562)">
+    <rect class="box" width="180" height="104" rx="10"/>
+    <text class="sans n-title" x="16" y="30">Bucket do state</text>
+    <text class="sans n-sub" x="16" y="50">GCS · versionado</text>
+    <text class="mono n-path" x="16" y="74">bootstrap/</text>
+    <text class="mono n-path" x="16" y="92">envs/dev/</text>
+  </g>
+
+  <g class="node" transform="translate(270,688)">
+    <rect class="box" width="420" height="44" rx="10"/>
+    <text class="sans n-title" x="16" y="28">Observabilidade e custo</text>
+    <text class="mono n-path" x="250" y="28">modules/observability</text>
+  </g>
+</svg>
