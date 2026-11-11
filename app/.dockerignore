@@ -1,0 +1,21 @@
+node_modules
+npm-debug.log*
+
+# Segredos e configuração local nunca entram na imagem
+.env
+.env.*
+
+# O cliente do Prisma é gerado dentro da imagem
+src/generated
+
+# Não fazem parte da imagem de produção
+test
+vitest.config.js
+docker-compose.yml
+Dockerfile
+.dockerignore
+.git
+.gitignore
+.idea
+.claude
+*.md
