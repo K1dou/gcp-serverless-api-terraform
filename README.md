@@ -6,7 +6,7 @@
 
 Uma API Node.js rodando no **Google Cloud Run**, com banco **Cloud SQL sem IP público**, segredos no **Secret Manager** e toda a infraestrutura descrita em **Terraform**, com state remoto e um diretório raiz por ambiente.
 
-Este projeto é onde eu pratico e demonstro boas práticas de infraestrutura na nuvem: código versionado, ambientes isolados, menor privilégio, nenhum segredo no repositório e um ciclo de `apply` e `destroy` que funciona do zero.
+Este projeto existe para mostrar, na prática, boas práticas de infraestrutura na nuvem: código versionado, ambientes isolados, menor privilégio, nenhum segredo no repositório e um ciclo de `apply` e `destroy` que funciona do zero.
 
 > **Status:** a infraestrutura de rede, banco e Cloud Run está pronta e foi aplicada e testada no GCP. O Cloud Run ainda roda a imagem de exemplo `hello` do Google; o deploy da API de `app/`, o CI/CD e a observabilidade são as próximas fases (veja o [roadmap](#roadmap)).
 
