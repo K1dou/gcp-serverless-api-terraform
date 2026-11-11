@@ -14,31 +14,7 @@ Este projeto existe para mostrar, na prática, boas práticas de infraestrutura 
 
 ## Arquitetura
 
-```mermaid
-flowchart LR
-  user([Usuário])
-  net([Internet])
-  gh["GitHub Actions<br/>planejado"]
-
-  user -->|"HTTPS"| run
-  gh -.->|"OIDC, sem chave"| wif
-
-  subgraph gcp["Projeto GCP"]
-    wif["Workload Identity<br/>planejado"] -.->|"deploy-sa"| ar
-    ar["Artifact Registry<br/>imagens do container"] -->|"imagem"| run
-    run["Cloud Run<br/>API Express"] -->|"lê a senha"| sm["Secret Manager<br/>senha do banco"]
-    sa["api-sa<br/>menor privilégio"] -.->|"identidade"| run
-    state[("Bucket GCS<br/>state do Terraform")]
-
-    subgraph vpc["VPC vpc-dev · sub-rede subnet-dev"]
-      sql[("Cloud SQL Postgres<br/>somente IP privado")]
-      nat["Cloud NAT"]
-    end
-
-    run -->|"Direct VPC egress"| sql
-    nat -.->|"saída"| net
-  end
-```
+![Arquitetura do projeto: usuário, Cloud Run, Cloud SQL privado na VPC, Secret Manager, Artifact Registry e o pipeline de deploy sem chave](docs/arquitetura.svg)
 
 O usuário só conversa com o Cloud Run. O banco fica dentro da VPC, sem IP público, e o Cloud Run entra na VPC por *Direct VPC egress*, enviando para ela apenas o tráfego destinado a IPs privados.
 
