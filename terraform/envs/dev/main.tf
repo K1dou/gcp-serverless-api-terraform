@@ -29,7 +29,8 @@ module "database" {
 
 module "service" {
   source = "../../modules/service"
-  secret_id = module.database.secret_id
+  db_url_secret_id      = module.database.db_url_secret_id
+  db_url_secret_version = module.database.db_url_secret_version
   project = var.project_id
   repository_id = "api-dev-repository"
   region = var.region 

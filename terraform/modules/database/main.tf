@@ -14,8 +14,6 @@ resource "google_service_networking_connection" "connection_psa" {
   reserved_peering_ranges = [google_compute_global_address.private_ip_alloc.name]
 }
 
-
-
 resource "google_sql_database_instance" "instance" {
   name             = var.name_instance_database
   region           = var.region
@@ -24,15 +22,15 @@ resource "google_sql_database_instance" "instance" {
     tier = "db-g1-small"
 
     ip_configuration {
-      ipv4_enabled                                  = false        # Desliga totalmente o IP Público (Internet)
-      private_network                               = var.network  # Diz para o banco escutar dentro da sua VPC
+      ipv4_enabled                                  = false       # Desliga totalmente o IP Público (Internet)
+      private_network                               = var.network # Diz para o banco escutar dentro da sua VPC
       enable_private_path_for_google_cloud_services = true
     }
   }
 
-  deletion_protection  = var.db_deletion_protection
+  deletion_protection = var.db_deletion_protection
 
-  depends_on = [ google_service_networking_connection.connection_psa ]
+  depends_on = [google_service_networking_connection.connection_psa]
 }
 
 resource "google_secret_manager_secret" "db_secret" {
@@ -47,25 +45,42 @@ resource "google_secret_manager_secret" "db_secret" {
 resource "random_password" "db_password" {
   length           = 18
   special          = true
-  override_special = "!#$&*()-_=+[]{}<>?" 
+  override_special = "!#$&*()-_=+[]{}<>?"
 }
-
 
 resource "google_secret_manager_secret_version" "db_secret_version" {
-  secret = google_secret_manager_secret.db_secret.id
+  secret      = google_secret_manager_secret.db_secret.id
   secret_data = random_password.db_password.result
 }
-
-
 
 resource "google_sql_database" "database" {
   name     = var.database_name
   instance = google_sql_database_instance.instance.name
-  project = var.project
+  project  = var.project
 }
 
 resource "google_sql_user" "users" {
   name     = "api_user"
   instance = google_sql_database_instance.instance.name
   password = random_password.db_password.result
+}
+
+# URL de conexão que a API lê em DATABASE_URL.
+# A senha tem caracteres especiais (#, ?, [ ...), então precisa de urlencode.
+locals {
+  api_database_url = "postgresql://api_user:${urlencode(random_password.db_password.result)}@${google_sql_database_instance.instance.private_ip_address}:5432/${google_sql_database.database.name}"
+}
+
+resource "google_secret_manager_secret" "api_db_url_secret" {
+  secret_id   = "api-database-url"
+  secret_type = "CUSTOMER_MANAGED"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "api_db_url_version" {
+  secret      = google_secret_manager_secret.api_db_url_secret.id
+  secret_data = local.api_database_url
 }
