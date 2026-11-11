@@ -8,7 +8,7 @@ Uma API Node.js rodando no **Google Cloud Run**, com banco **Cloud SQL sem IP p�
 
 Este projeto existe para mostrar, na prática, boas práticas de infraestrutura na nuvem: código versionado, ambientes isolados, menor privilégio, nenhum segredo no repositório e um ciclo de `apply` e `destroy` que funciona do zero.
 
-> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta e foi aplicada e testada no GCP. O Cloud Run ainda roda a imagem de exemplo `hello` do Google; o deploy da API de `app/`, o CI/CD e a observabilidade são as próximas fases (veja o [roadmap](#roadmap)).
+> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` já roda no Cloud Run, conectada ao banco privado (registro e login funcionando). O deploy ainda é manual; o CI/CD e a observabilidade são as próximas fases (veja o [roadmap](#roadmap)).
 
 ---
 
@@ -25,7 +25,8 @@ O usuário só conversa com o Cloud Run. O banco fica dentro da VPC, sem IP púb
 | Infraestrutura como código | Terraform `~> 1.17`, provider `google ~> 8.10` |
 | Computação | Cloud Run (v2), escala a zero |
 | Banco | Cloud SQL Postgres, IP privado via Private Service Access |
-| Segredos | Secret Manager, senha gerada pelo Terraform (`random_password`) |
+| Segredos | Secret Manager: senha e URL do banco e segredos do JWT, todos gerados pelo Terraform (`random_password`) |
+| Migrations | Cloud Run Job (`prisma migrate deploy`) dentro da VPC |
 | Imagens | Artifact Registry, tags imutáveis |
 | Rede | VPC customizada, sub-rede com Private Google Access, Cloud Router + NAT |
 | State | Bucket GCS com versionamento e acesso público bloqueado |
@@ -45,6 +46,9 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 | 5 | State em bucket GCS versionado | State local ou no Git | Locking, histórico e nenhum segredo no Git |
 | 6 | Um diretório raiz por ambiente (`envs/dev`, futuramente `envs/prod`) | Um diretório só com arquivos de variáveis | State isolado: um `apply` no dev nunca toca o prod |
 | 7 | Módulo `bootstrap` separado | Criar o bucket do state à mão | Resolve o ovo e a galinha de forma reproduzível |
+| 8 | Migrations por Cloud Run Job dentro da VPC | Rodar do CI ou do notebook | O banco é privado: só quem está na VPC o alcança; o pipeline apenas dispara o job |
+| 9 | Direct VPC egress | Serverless VPC Access connector | Sem recurso extra nem custo fixo do conector |
+| 10 | Imagem trocada fora do Terraform (`ignore_changes`) | Terraform controlando a imagem | A infra e o deploy da aplicação têm ciclos diferentes; o pipeline troca a imagem |
 
 ## Estrutura do repositório
 
@@ -55,8 +59,8 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 │   ├── bootstrap/               # bucket do state (roda uma vez)
 │   ├── modules/
 │   │   ├── network/             # VPC, sub-rede, firewall, Cloud Router e NAT
-│   │   ├── database/            # Cloud SQL, usuário, banco, segredo
-│   │   └── service/             # Cloud Run, api-sa, Artifact Registry
+│   │   ├── database/            # Cloud SQL, usuário, banco, senha e URL de conexão
+│   │   └── service/             # Cloud Run, Job de migrations, api-sa, segredos do JWT, Artifact Registry
 │   └── envs/
 │       └── dev/                 # chama os módulos, state próprio
 └── README.md
@@ -68,8 +72,8 @@ Cada pasta que roda `apply` (`bootstrap` e `envs/*`) tem o seu próprio `version
 
 - **Sem chave de service account.** A autenticação local usa Application Default Credentials.
 - **Banco sem IP público** (`ipv4_enabled = false`), acessível só de dentro da VPC.
-- **Menor privilégio.** A `api-sa` recebe apenas `roles/cloudsql.client` e leitura do segredo do banco, e o Cloud Run roda com ela, não com a conta padrão.
-- **Nenhum segredo no Git.** `*.tfvars`, `*.tfstate` e planos salvos estão no `.gitignore`; a senha do banco é gerada pelo Terraform e vai direto para o Secret Manager.
+- **Menor privilégio.** A `api-sa` recebe apenas `roles/cloudsql.client` e leitura de três segredos (URL do banco e os dois do JWT), um a um, e o Cloud Run roda com ela, não com a conta padrão.
+- **Nenhum segredo no Git.** `*.tfvars`, `*.tfstate` e planos salvos estão no `.gitignore`; a senha do banco e os segredos do JWT são gerados pelo Terraform e vão direto para o Secret Manager.
 - **Bucket do state protegido:** acesso público bloqueado, versionamento ligado, `prevent_destroy` e regra de limpeza de versões antigas.
 - **Registry com tags imutáveis**, para que uma tag nunca aponte para duas imagens diferentes.
 - **API:** autenticação JWT com refresh token rotativo, cookies `httpOnly`, e escrita no catálogo de produtos restrita ao papel `ADMIN`, com testes de controle de acesso.
@@ -126,7 +130,39 @@ Ao final, a URL pública aparece nos outputs:
 terraform output api_final_url
 ```
 
-### 3. Destruir
+### 3. Deploy da API
+O Terraform cria a infraestrutura com a imagem de exemplo `hello`; a imagem real é enviada à parte (hoje à mão, na fase 5 pelo pipeline). Cada commit gera uma tag nova, porque o registry tem tags imutáveis.
+
+```bash
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
+IMAGE=us-central1-docker.pkg.dev/SEU-PROJETO/api-dev-repository/sales-api:$(git rev-parse --short HEAD)
+docker build -t $IMAGE app/
+docker push $IMAGE
+```
+
+Como o banco só tem IP privado, as migrations rodam num Cloud Run Job dentro da VPC. Atualize a imagem do job, execute e só depois faça o deploy da API:
+
+```bash
+gcloud run jobs update migrate-database \
+  --project SEU-PROJETO --region us-central1 --image $IMAGE
+
+gcloud run jobs execute migrate-database \
+  --project SEU-PROJETO --region us-central1 --wait
+
+gcloud run deploy cloudrun-api \
+  --project SEU-PROJETO --region us-central1 --image $IMAGE
+```
+
+> Não use `--no-allow-unauthenticated` no `gcloud run deploy`: o flag remove a permissão pública que o Terraform criou. Sempre passe `--project`, para não implantar no projeto ativo errado.
+
+Teste:
+
+```bash
+curl $(terraform output -raw api_final_url)/health
+```
+
+### 4. Destruir
 ```bash
 terraform destroy
 ```
@@ -160,8 +196,8 @@ API de vendas com autenticação e controle de acesso por papel:
 |---|---|---|
 | 1 | Planejamento, diagrama e ADRs | Em andamento |
 | 2 | Bootstrap, state remoto e módulo de rede | Feito |
-| 3 | Cloud Run e Artifact Registry | Infra feita; falta o deploy da API real |
-| 4 | Cloud SQL privado e segredo da senha | Infra feita; falta a API conectar |
+| 3 | Cloud Run e Artifact Registry | Feito: API real no ar (deploy manual) |
+| 4 | Cloud SQL privado, segredos e migrations por Job | Feito: API conectada ao banco privado |
 | 5 | CI/CD com GitHub Actions e Workload Identity Federation (deploy sem chave) | Planejado |
 | 6 | Observabilidade: logs, uptime check, alertas de erro 5xx e budget | Planejado |
 | 7 | Ambiente de produção reaproveitando os módulos | Planejado |
@@ -172,6 +208,9 @@ API de vendas com autenticação e controle de acesso por papel:
 - **Dependência por referência, não por texto.** Passar `module.network.network_id` entre módulos faz o Terraform montar o grafo; uma string solta não cria dependência nenhuma. Quando não há referência natural, como entre uma API habilitada e um módulo, entra o `depends_on`.
 - **O `destroy` também tem ordem.** O Cloud SQL, a conexão privada e o Direct VPC egress seguram a VPC por um tempo depois de apagados.
 - **Código gerado a partir de exemplos precisa ser relido.** Argumentos de outro banco ou de outro recurso parecem funcionar e só falham no `plan` ou no `apply`.
+- **`terraform validate` confere o formato, não os valores.** Um `secret_type` inválido e um nome de job com underscore passam no `validate` e só falham no `apply`, porque quem rejeita é a API do Google.
+- **Mexer na infra por fora do Terraform cria drift.** O `--no-allow-unauthenticated` do `gcloud run deploy` removeu a permissão pública criada pelo Terraform, e a API passou a responder `403` até o próximo `apply` repor o binding.
+- **Confira o projeto ativo do `gcloud`.** Um deploy sem `--project` tentou criar um serviço novo em outro projeto; o erro de permissão enganava, e a pista estava na linha do projeto no próprio log.
 
 ---
 
