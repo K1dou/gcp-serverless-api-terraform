@@ -11,6 +11,10 @@ import orderRouter from "./routes/orderRouter.js";
 
 const app = express();
 
+// Atrás do Cloud Run há um proxy: confia no primeiro salto para que req.ip e
+// req.protocol reflitam o cliente real (importante para rate limit e logs).
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(morgan('dev'));
 app.use(express.json());
@@ -22,6 +26,12 @@ const healthCheck = (req, res) => {
 };
 
 app.get('/', healthCheck);
+
+// Liveness: só diz que o processo está de pé. Não consulta o banco de propósito,
+// para uma falha momentânea do banco não derrubar a checagem de saúde.
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 
 
