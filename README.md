@@ -16,9 +16,15 @@ O projeto existe para mostrar, na prática, como se monta uma infraestrutura de 
 
 ```mermaid
 flowchart LR
-  user([Usuário]) -->|"HTTPS"| run
+  user([Usuário])
+  net([Internet])
+  gh["GitHub Actions<br/>planejado"]
+
+  user -->|"HTTPS"| run
+  gh -.->|"OIDC, sem chave"| wif
 
   subgraph gcp["Projeto GCP"]
+    wif["Workload Identity<br/>planejado"] -.->|"deploy-sa"| ar
     ar["Artifact Registry<br/>imagens do container"] -->|"imagem"| run
     run["Cloud Run<br/>API Express"] -->|"lê a senha"| sm["Secret Manager<br/>senha do banco"]
     sa["api-sa<br/>menor privilégio"] -.->|"identidade"| run
@@ -30,9 +36,8 @@ flowchart LR
     end
 
     run -->|"Direct VPC egress"| sql
+    nat -.->|"saída"| net
   end
-
-  gh["GitHub Actions<br/>planejado"] -.->|"OIDC (Workload Identity)"| gcp
 ```
 
 O usuário só conversa com o Cloud Run. O banco fica dentro da VPC, sem IP público, e o Cloud Run entra na VPC por *Direct VPC egress*, enviando para ela apenas o tráfego destinado a IPs privados.
