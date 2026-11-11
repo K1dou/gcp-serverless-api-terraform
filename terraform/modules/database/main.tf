@@ -72,8 +72,7 @@ locals {
 }
 
 resource "google_secret_manager_secret" "api_db_url_secret" {
-  secret_id   = "api-database-url"
-  secret_type = "CUSTOMER_MANAGED"
+  secret_id = "api-database-url"
 
   replication {
     auto {}
