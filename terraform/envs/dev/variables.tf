@@ -8,3 +8,11 @@ variable "region" {
   description = "Região padrão dos recursos do ambiente dev."
   default     = "us-central1"
 }
+
+variable "github_repository" {
+  type = string
+}
+
+variable "github_repository_owner_id" {
+  type = string
+}
