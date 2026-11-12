@@ -42,3 +42,18 @@ module "service" {
   depends_on = [google_project_service.apis]
 
 }
+
+module "cicd" {
+  source                     = "../../modules/cicd"
+  project                    = var.project_id
+  region                     = var.region
+  github_repository          = "K1dou/gcp-serverless-api-terraform"
+  github_repository_owner_id = "149512153"
+
+  repository_name  = module.service.repository_name
+  migrate_job_name = module.service.migrate_job_name
+  cloud_run_name   = module.service.cloud_run_name
+  api_sa_name      = module.service.api_sa_name
+
+  depends_on = [google_project_service.apis]
+}
