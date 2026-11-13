@@ -1,3 +1,12 @@
+data "terraform_remote_state" "bootstrap" {
+  backend = "gcs"
+  config = {
+    bucket = "gcp-serverless-api-terraform-bucket"
+    prefix = "bootstrap"
+  }
+}
+
+
 
 
 module "network" {
@@ -48,12 +57,11 @@ module "cicd" {
   project                    = var.project_id
   region                     = var.region
   github_repository          = "K1dou/gcp-serverless-api-terraform"
-  github_repository_owner_id = "149512153"
-
+  pool_name = data.terraform_remote_state.bootstrap.outputs.pool_name
   repository_name  = module.service.repository_name
   migrate_job_name = module.service.migrate_job_name
   cloud_run_name   = module.service.cloud_run_name
   api_sa_name      = module.service.api_sa_name
-
+ 
   depends_on = [google_project_service.apis]
 }

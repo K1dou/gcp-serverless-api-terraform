@@ -14,7 +14,7 @@ output "api_final_url" {
 }
 
 output "provider_name" {
-  value = module.cicd.provider_name
+  value = data.terraform_remote_state.bootstrap.outputs.provider_name
 
 }
 

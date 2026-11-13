@@ -27,6 +27,8 @@ resource "google_storage_bucket" "tfstate" {
     }
   }
 
+
+
   labels = {
     managed_by = "terraform"
     purpose    = "tfstate"
@@ -36,4 +38,57 @@ resource "google_storage_bucket" "tfstate" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+
+
+
+resource "google_iam_workload_identity_pool" "github" {
+  workload_identity_pool_id = "github-pool"
+  display_name              = "GitHub Actions"
+  depends_on                = [google_project_service.apis]
+
+}
+
+
+resource "google_iam_workload_identity_pool_provider" "github" {
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-provider"
+  display_name                       = "pipeline-github"
+  description                        = "GitHub Actions identity pool provider"
+  attribute_condition                = <<EOT
+    assertion.repository_owner_id == "${var.github_repository_owner_id}" && 
+    assertion.repository == "${var.github_repository}"
+EOT
+
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.actor"      = "assertion.actor"
+    "attribute.aud"        = "assertion.aud"
+    "attribute.repository" = "assertion.repository"
+  }
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+
+
+locals {
+  apis = [
+    "iam.googleapis.com",
+    "iamcredentials.googleapis.com",
+    "sts.googleapis.com"
+  ]
+}
+
+resource "google_project_service" "apis" {
+  for_each = toset(local.apis)
+
+  project            = var.project_id
+  service            = each.value
+  disable_on_destroy = false
 }

@@ -36,35 +36,9 @@ resource "google_service_account_iam_member" "iam_sa_as_user_sa" {
 
 
 
-resource "google_iam_workload_identity_pool" "github" {
-  workload_identity_pool_id = "github-pool"
-  display_name              = "GitHub Actions"
-}
-
-resource "google_iam_workload_identity_pool_provider" "github" {
-  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
-  workload_identity_pool_provider_id = "github-provider"
-  display_name                       = "pipeline-github"
-  description                        = "GitHub Actions identity pool provider"
-  attribute_condition = <<EOT
-    assertion.repository_owner_id == "${var.github_repository_owner_id}" && 
-    assertion.repository == "${var.github_repository}"
-EOT
-
-
-  attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.actor"      = "assertion.actor"
-    "attribute.aud"        = "assertion.aud"
-    "attribute.repository" = "assertion.repository"
-  }
-  oidc {
-    issuer_uri = "https://token.actions.githubusercontent.com"
-  }
-}
 
 resource "google_service_account_iam_member" "github_assume_deploy_sa" {
   service_account_id = google_service_account.deploy_sa.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
+  member             = "principalSet://iam.googleapis.com/${var.pool_name}/attribute.repository/${var.github_repository}"
 }
