@@ -13,3 +13,11 @@ variable "bucket_name" {
   type        = string
   description = "Nome do bucket de state (único globalmente)."
 }
+
+variable "github_repository" {
+  type = string
+}
+
+variable "github_repository_owner_id" {
+  type = string
+}

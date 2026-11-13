@@ -27,6 +27,6 @@ variable "repository_name" {
 variable "github_repository" {
   type = string
 }
-variable "github_repository_owner_id" {
+variable "pool_name" {
   type = string
 }
