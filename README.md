@@ -8,7 +8,7 @@ Uma API Node.js rodando no **Google Cloud Run**, com banco **Cloud SQL sem IP p�
 
 Este projeto existe para mostrar, na prática, boas práticas de infraestrutura na nuvem: código versionado, ambientes isolados, menor privilégio, nenhum segredo no repositório e um ciclo de `apply` e `destroy` que funciona do zero.
 
-> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` já roda no Cloud Run, conectada ao banco privado (registro e login funcionando). O deploy ainda é manual; o CI/CD e a observabilidade são as próximas fases (veja o [roadmap](#roadmap)).
+> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` roda no Cloud Run, conectada ao banco privado. O deploy é automático: um push na `main` dispara um pipeline do GitHub Actions que autentica por Workload Identity Federation (sem chave de service account), publica a imagem, roda as migrations e faz o deploy. A observabilidade e o ambiente de produção são as próximas fases (veja o [roadmap](#roadmap)).
 
 ---
 
@@ -27,6 +27,7 @@ O usuário só conversa com o Cloud Run. O banco fica dentro da VPC, sem IP púb
 | Banco | Cloud SQL Postgres, IP privado via Private Service Access |
 | Segredos | Secret Manager: senha e URL do banco e segredos do JWT, todos gerados pelo Terraform (`random_password`) |
 | Migrations | Cloud Run Job (`prisma migrate deploy`) dentro da VPC |
+| CI/CD | GitHub Actions + Workload Identity Federation (sem chave de service account) |
 | Imagens | Artifact Registry, tags imutáveis |
 | Rede | VPC customizada, sub-rede com Private Google Access, Cloud Router + NAT |
 | State | Bucket GCS com versionamento e acesso público bloqueado |
@@ -35,7 +36,7 @@ O usuário só conversa com o Cloud Run. O banco fica dentro da VPC, sem IP púb
 
 ## Decisões de arquitetura
 
-Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os registros completos (ADRs) vão para `docs/adr/`.
+Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os registros completos estão em [`docs/adr/`](docs/adr/README.md).
 
 | # | Decisão | Alternativa descartada | Por quê |
 |---|---|---|---|
@@ -49,18 +50,25 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 | 8 | Migrations por Cloud Run Job dentro da VPC | Rodar do CI ou do notebook | O banco é privado: só quem está na VPC o alcança; o pipeline apenas dispara o job |
 | 9 | Direct VPC egress | Serverless VPC Access connector | Sem recurso extra nem custo fixo do conector |
 | 10 | Imagem trocada fora do Terraform (`ignore_changes`) | Terraform controlando a imagem | A infra e o deploy da aplicação têm ciclos diferentes; o pipeline troca a imagem |
+| 11 | CI/CD com Workload Identity Federation | Chave JSON de service account guardada no GitHub | Sem credencial de longa duração para vazar: o GitHub apresenta um token temporário e o GCP só o aceita para este repositório |
+| 12 | Pool e provider do WIF no `bootstrap` | Pool dentro do ambiente `dev` | O `destroy` do dev não apaga o pool, e um pool apagado fica com o ID reservado por cerca de 30 dias |
 
 ## Estrutura do repositório
 
 ```
 .
+├── .github/workflows/           # pipeline de deploy (GitHub Actions)
 ├── app/                         # API Express + Prisma + testes
+├── docs/
+│   ├── adr/                     # registros de decisão de arquitetura
+│   └── arquitetura.svg
 ├── terraform/
-│   ├── bootstrap/               # bucket do state (roda uma vez)
+│   ├── bootstrap/               # bucket do state e pool/provider do WIF (roda uma vez)
 │   ├── modules/
 │   │   ├── network/             # VPC, sub-rede, firewall, Cloud Router e NAT
 │   │   ├── database/            # Cloud SQL, usuário, banco, senha e URL de conexão
-│   │   └── service/             # Cloud Run, Job de migrations, api-sa, segredos do JWT, Artifact Registry
+│   │   ├── service/             # Cloud Run, Job de migrations, api-sa, segredos do JWT, Artifact Registry
+│   │   └── cicd/                # deploy-sa e permissões do pipeline
 │   └── envs/
 │       └── dev/                 # chama os módulos, state próprio
 └── README.md
@@ -70,7 +78,7 @@ Cada pasta que roda `apply` (`bootstrap` e `envs/*`) tem o seu próprio `version
 
 ## Segurança
 
-- **Sem chave de service account.** A autenticação local usa Application Default Credentials.
+- **Sem chave de service account.** Localmente a autenticação usa Application Default Credentials; no CI, Workload Identity Federation. O provider só aceita tokens do repositório e do dono configurados, e o pipeline assume a `deploy-sa`, que só pode enviar imagens ao registry, atualizar o Cloud Run e o Job, e agir como a `api-sa`.
 - **Banco sem IP público** (`ipv4_enabled = false`), acessível só de dentro da VPC.
 - **Menor privilégio.** A `api-sa` recebe apenas `roles/cloudsql.client` e leitura de três segredos (URL do banco e os dois do JWT), um a um, e o Cloud Run roda com ela, não com a conta padrão.
 - **Nenhum segredo no Git.** `*.tfvars`, `*.tfstate` e planos salvos estão no `.gitignore`; a senha do banco e os segredos do JWT são gerados pelo Terraform e vão direto para o Secret Manager.
@@ -82,6 +90,9 @@ Cada pasta que roda `apply` (`bootstrap` e `envs/*`) tem o seu próprio `version
 
 - O Cloud Run está aberto à internet (`allUsers` como invoker) porque é uma API pública. A autenticação fica por conta da própria API.
 - A senha gerada pelo Terraform fica no state em texto. Por isso o bucket é privado e versionado.
+- O provider do WIF aceita qualquer branch do repositório, não só a `main`. Restringir (`assertion.ref`) ou usar Environments com aprovação é uma melhoria planejada.
+- O Terraform ainda é aplicado à mão; o pipeline cobre só o deploy da aplicação.
+- O acesso humano ao banco (consultas) ainda não existe: o banco só tem IP privado. Um bastion com túnel IAP é uma melhoria planejada.
 - O ambiente `prod` ainda não existe.
 
 ## Como rodar
@@ -95,11 +106,13 @@ gcloud auth application-default login
 ```
 
 ### 1. Bootstrap (uma vez)
-Cria o bucket que guarda o state dos outros ambientes. Em `terraform/bootstrap/`, crie um `terraform.tfvars`:
+Cria o bucket que guarda o state dos outros ambientes e o pool/provider do Workload Identity Federation, que vivem fora do `destroy` do dev. Em `terraform/bootstrap/`, crie um `terraform.tfvars`:
 
 ```hcl
-project_id  = "SEU-PROJETO"
-bucket_name = "NOME-UNICO-DO-BUCKET"
+project_id                 = "SEU-PROJETO"
+bucket_name                = "NOME-UNICO-DO-BUCKET"
+github_repository          = "SEU-USUARIO/SEU-REPOSITORIO"
+github_repository_owner_id = "ID-NUMERICO-DA-SUA-CONTA"   # https://api.github.com/users/SEU-USUARIO
 ```
 
 ```bash
@@ -115,7 +128,7 @@ terraform init -migrate-state -backend-config=backend.hcl
 ```
 
 ### 2. Ambiente dev
-Em `terraform/envs/dev/`, crie o `terraform.tfvars` com `project_id = "SEU-PROJETO"` e ajuste o `backend.hcl` para o seu bucket.
+Em `terraform/envs/dev/`, crie o `terraform.tfvars` com `project_id = "SEU-PROJETO"` e ajuste o `backend.hcl` para o seu bucket. O ambiente lê o nome do pool do state do bootstrap (`terraform_remote_state`), por isso o bootstrap precisa ter sido aplicado antes; ajuste também o `bucket` e o `github_repository` em `envs/dev/main.tf`.
 
 ```bash
 cd terraform/envs/dev
@@ -131,8 +144,21 @@ terraform output api_final_url
 ```
 
 ### 3. Deploy da API
-O Terraform cria a infraestrutura com a imagem de exemplo `hello`; a imagem real é enviada à parte (hoje à mão, na fase 5 pelo pipeline). Cada commit gera uma tag nova, porque o registry tem tags imutáveis.
+O Terraform cria a infraestrutura com a imagem de exemplo `hello`; a imagem real é enviada à parte. Cada commit gera uma tag nova, porque o registry tem tags imutáveis.
 
+#### Pelo pipeline (padrão)
+No repositório do GitHub, crie estas **Variables** (Settings, Secrets and variables, Actions; não são segredos). Os dois últimos valores saem de `terraform output`:
+
+| Variable | Valor |
+|---|---|
+| `GCP_PROJECT_ID` | o ID do projeto |
+| `GCP_REGION` | `us-central1` |
+| `WIF_PROVIDER` | output `provider_name` |
+| `DEPLOY_SA_EMAIL` | output `email_deploy_sa` |
+
+Depois, um push na `main` que altere `app/` (ou **Actions, Deploy API, Run workflow**) faz: autenticar por WIF, build, push da imagem com o SHA do commit, migrations pelo Job e deploy. Se as migrations falham, o deploy não acontece. Depois de um `destroy`, o registry volta vazio: basta disparar o workflow de novo.
+
+#### À mão (alternativa)
 ```bash
 gcloud auth configure-docker us-central1-docker.pkg.dev
 
@@ -194,11 +220,11 @@ API de vendas com autenticação e controle de acesso por papel:
 
 | Fase | Entrega | Status |
 |---|---|---|
-| 1 | Planejamento, diagrama e ADRs | Em andamento |
+| 1 | Planejamento, diagrama e ADRs | Feito (ADRs seguem crescendo com cada fase) |
 | 2 | Bootstrap, state remoto e módulo de rede | Feito |
-| 3 | Cloud Run e Artifact Registry | Feito: API real no ar (deploy manual) |
+| 3 | Cloud Run e Artifact Registry | Feito: API real no ar |
 | 4 | Cloud SQL privado, segredos e migrations por Job | Feito: API conectada ao banco privado |
-| 5 | CI/CD com GitHub Actions e Workload Identity Federation (deploy sem chave) | Planejado |
+| 5 | CI/CD com GitHub Actions e Workload Identity Federation (deploy sem chave) | Feito: push na `main` faz build, migrations e deploy |
 | 6 | Observabilidade: logs, uptime check, alertas de erro 5xx e budget | Planejado |
 | 7 | Ambiente de produção reaproveitando os módulos | Planejado |
 
@@ -210,6 +236,8 @@ API de vendas com autenticação e controle de acesso por papel:
 - **Código gerado a partir de exemplos precisa ser relido.** Argumentos de outro banco ou de outro recurso parecem funcionar e só falham no `plan` ou no `apply`.
 - **`terraform validate` confere o formato, não os valores.** Um `secret_type` inválido e um nome de job com underscore passam no `validate` e só falham no `apply`, porque quem rejeita é a API do Google.
 - **Mexer na infra por fora do Terraform cria drift.** O `--no-allow-unauthenticated` do `gcloud run deploy` removeu a permissão pública criada pelo Terraform, e a API passou a responder `403` até o próximo `apply` repor o binding.
+- **States separados trocam valores por `output` + `terraform_remote_state`.** O pool do WIF vive no bootstrap e o ambiente dev lê o nome dele do state do bootstrap. O membro do binding exige o nome **completo** do pool (`projects/NÚMERO/locations/global/workloadIdentityPools/...`), não o ID curto `github-pool`.
+- **No WIF, o provider decide quem entra e o binding decide o que quem entrou pode usar.** Sem a condição do repositório no provider, qualquer repositório do GitHub poderia tentar; sem o `workloadIdentityUser`, ninguém consegue assumir a service account.
 - **Confira o projeto ativo do `gcloud`.** Um deploy sem `--project` tentou criar um serviço novo em outro projeto; o erro de permissão enganava, e a pista estava na linha do projeto no próprio log.
 
 ---
