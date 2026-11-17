@@ -8,7 +8,7 @@ Uma API Node.js rodando no **Google Cloud Run**, com banco **Cloud SQL sem IP p�
 
 Este projeto existe para mostrar, na prática, boas práticas de infraestrutura na nuvem: código versionado, ambientes isolados, menor privilégio, nenhum segredo no repositório e um ciclo de `apply` e `destroy` que funciona do zero.
 
-> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` roda no Cloud Run, conectada ao banco privado. O deploy é automático: um push na `main` dispara um pipeline do GitHub Actions que autentica por Workload Identity Federation (sem chave de service account), publica a imagem, roda as migrations e faz o deploy. A observabilidade e o ambiente de produção são as próximas fases (veja o [roadmap](#roadmap)).
+> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` roda no Cloud Run, conectada ao banco privado. O deploy é automático: um push na `main` dispara um pipeline do GitHub Actions que autentica por Workload Identity Federation (sem chave de service account), publica a imagem, roda as migrations e faz o deploy. A observabilidade também está pronta: um uptime check, alertas de queda e de erros 5xx e um orçamento de custos avisam por e-mail. O ambiente de produção é a próxima fase (veja o [roadmap](#roadmap)).
 
 ---
 
@@ -28,6 +28,7 @@ O usuário só conversa com o Cloud Run. O banco fica dentro da VPC, sem IP púb
 | Segredos | Secret Manager: senha e URL do banco e segredos do JWT, todos gerados pelo Terraform (`random_password`) |
 | Migrations | Cloud Run Job (`prisma migrate deploy`) dentro da VPC |
 | CI/CD | GitHub Actions + Workload Identity Federation (sem chave de service account) |
+| Observabilidade | Cloud Monitoring: uptime check, alertas de queda e de 5xx por e-mail, e orçamento de custos |
 | Imagens | Artifact Registry, tags imutáveis |
 | Rede | VPC customizada, sub-rede com Private Google Access, Cloud Router + NAT |
 | State | Bucket GCS com versionamento e acesso público bloqueado |
@@ -52,6 +53,8 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 | 10 | Imagem trocada fora do Terraform (`ignore_changes`) | Terraform controlando a imagem | A infra e o deploy da aplicação têm ciclos diferentes; o pipeline troca a imagem |
 | 11 | CI/CD com Workload Identity Federation | Chave JSON de service account guardada no GitHub | Sem credencial de longa duração para vazar: o GitHub apresenta um token temporário e o GCP só o aceita para este repositório |
 | 12 | Pool e provider do WIF no `bootstrap` | Pool dentro do ambiente `dev` | O `destroy` do dev não apaga o pool, e um pool apagado fica com o ID reservado por cerca de 30 dias |
+| 13 | Alertas de uptime (mais de 1 local falhando) e de 5xx (qualquer erro), por e-mail | Limites altos, ou alertar com 1 local | Um 5xx é falha do servidor e um e-mail à toa custa pouco; já o uptime exige 2 locais para não alarmar por falha de rede de um só |
+| 14 | Orçamento no `bootstrap`, com canal de e-mail próprio | Orçamento dentro do `dev` ou só no console | O `destroy` do dev não apaga o alerta de custo, e tudo fica no código |
 
 ## Estrutura do repositório
 
@@ -63,12 +66,13 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 │   ├── adr/                     # registros de decisão de arquitetura
 │   └── arquitetura.svg
 ├── terraform/
-│   ├── bootstrap/               # bucket do state e pool/provider do WIF (roda uma vez)
+│   ├── bootstrap/               # bucket do state, pool/provider do WIF e orçamento de custos (roda uma vez)
 │   ├── modules/
 │   │   ├── network/             # VPC, sub-rede, firewall, Cloud Router e NAT
 │   │   ├── database/            # Cloud SQL, usuário, banco, senha e URL de conexão
 │   │   ├── service/             # Cloud Run, Job de migrations, api-sa, segredos do JWT, Artifact Registry
-│   │   └── cicd/                # deploy-sa e permissões do pipeline
+│   │   ├── cicd/                # deploy-sa e permissões do pipeline
+│   │   └── observability/       # canal de e-mail, uptime check, alertas de queda e de 5xx
 │   └── envs/
 │       └── dev/                 # chama os módulos, state próprio
 └── README.md
@@ -93,6 +97,8 @@ Cada pasta que roda `apply` (`bootstrap` e `envs/*`) tem o seu próprio `version
 - O provider do WIF aceita qualquer branch do repositório, não só a `main`. Restringir (`assertion.ref`) ou usar Environments com aprovação é uma melhoria planejada.
 - O Terraform ainda é aplicado à mão; o pipeline cobre só o deploy da aplicação.
 - O acesso humano ao banco (consultas) ainda não existe: o banco só tem IP privado. Um bastion com túnel IAP é uma melhoria planejada.
+- O alerta de 5xx só foi validado pelo `apply`; o de uptime foi testado derrubando o acesso público. Já o `/health` não consulta o banco, então uma queda do banco só aparece como 5xx nas rotas que dependem dele.
+- O orçamento só avisa, não bloqueia o gasto, e não tem aviso de 100% do gasto real.
 - O ambiente `prod` ainda não existe.
 
 ## Como rodar
@@ -106,14 +112,24 @@ gcloud auth application-default login
 ```
 
 ### 1. Bootstrap (uma vez)
-Cria o bucket que guarda o state dos outros ambientes e o pool/provider do Workload Identity Federation, que vivem fora do `destroy` do dev. Em `terraform/bootstrap/`, crie um `terraform.tfvars`:
+Cria o bucket que guarda o state dos outros ambientes, o pool/provider do Workload Identity Federation e o orçamento de custos, que vivem fora do `destroy` do dev. Em `terraform/bootstrap/`, crie um `terraform.tfvars`:
 
 ```hcl
 project_id                 = "SEU-PROJETO"
 bucket_name                = "NOME-UNICO-DO-BUCKET"
 github_repository          = "SEU-USUARIO/SEU-REPOSITORIO"
 github_repository_owner_id = "ID-NUMERICO-DA-SUA-CONTA"   # https://api.github.com/users/SEU-USUARIO
+billing_account            = "XXXXXX-XXXXXX-XXXXXX"       # console, Billing
+alert_email                = "voce@exemplo.com"
 ```
+
+O provider usa o seu projeto como cota (`user_project_override`), então, **na primeira vez**, ligue à mão as duas APIs que o próprio Terraform precisa para gerenciar APIs:
+
+```bash
+gcloud services enable cloudresourcemanager.googleapis.com serviceusage.googleapis.com --project=SEU-PROJETO
+```
+
+O orçamento (`google_billing_budget`) usa a moeda da conta de billing: ajuste `currency_code` e `units` em `bootstrap/main.tf` se a sua não for BRL.
 
 ```bash
 cd terraform/bootstrap
@@ -128,7 +144,7 @@ terraform init -migrate-state -backend-config=backend.hcl
 ```
 
 ### 2. Ambiente dev
-Em `terraform/envs/dev/`, crie o `terraform.tfvars` com `project_id = "SEU-PROJETO"` e ajuste o `backend.hcl` para o seu bucket. O ambiente lê o nome do pool do state do bootstrap (`terraform_remote_state`), por isso o bootstrap precisa ter sido aplicado antes; ajuste também o `bucket` e o `github_repository` em `envs/dev/main.tf`.
+Em `terraform/envs/dev/`, crie o `terraform.tfvars` com `project_id = "SEU-PROJETO"` e `alert_email = "voce@exemplo.com"` (e as demais variáveis do `variables.tf`) e ajuste o `backend.hcl` para o seu bucket. O ambiente lê o nome do pool do state do bootstrap (`terraform_remote_state`), por isso o bootstrap precisa ter sido aplicado antes; ajuste também o `bucket` e o `github_repository` em `envs/dev/main.tf`.
 
 ```bash
 cd terraform/envs/dev
@@ -193,7 +209,7 @@ curl $(terraform output -raw api_final_url)/health
 terraform destroy
 ```
 
-> **Custo:** o Cloud SQL e o Cloud NAT cobram por hora enquanto existirem. Crie um alerta de orçamento no Billing e destrua o ambiente ao fim de cada sessão.
+> **Custo:** o Cloud SQL e o Cloud NAT cobram por hora enquanto existirem. O orçamento do `bootstrap` avisa por e-mail quando o gasto passa de 50% e quando a previsão passa de 90%, mas não bloqueia nada: destrua o ambiente ao fim de cada sessão.
 >
 > **Observação sobre o `destroy`:** o Google libera com atraso o endereço reservado pelo Direct VPC egress e a conexão privada do Cloud SQL. Se o `destroy` falhar com "resource in use", espere um pouco e rode de novo. O nome de uma instância do Cloud SQL apagada também pode ficar reservado por cerca de uma semana.
 
@@ -225,7 +241,7 @@ API de vendas com autenticação e controle de acesso por papel:
 | 3 | Cloud Run e Artifact Registry | Feito: API real no ar |
 | 4 | Cloud SQL privado, segredos e migrations por Job | Feito: API conectada ao banco privado |
 | 5 | CI/CD com GitHub Actions e Workload Identity Federation (deploy sem chave) | Feito: push na `main` faz build, migrations e deploy |
-| 6 | Observabilidade: logs, uptime check, alertas de erro 5xx e budget | Planejado |
+| 6 | Observabilidade: uptime check, alertas de queda e de erro 5xx, e orçamento | Feito: avisos por e-mail (os logs do Cloud Run já vão para o Cloud Logging por padrão) |
 | 7 | Ambiente de produção reaproveitando os módulos | Planejado |
 
 ## O que este projeto me ensinou
@@ -238,6 +254,10 @@ API de vendas com autenticação e controle de acesso por papel:
 - **Mexer na infra por fora do Terraform cria drift.** O `--no-allow-unauthenticated` do `gcloud run deploy` removeu a permissão pública criada pelo Terraform, e a API passou a responder `403` até o próximo `apply` repor o binding.
 - **States separados trocam valores por `output` + `terraform_remote_state`.** O pool do WIF vive no bootstrap e o ambiente dev lê o nome dele do state do bootstrap. O membro do binding exige o nome **completo** do pool (`projects/NÚMERO/locations/global/workloadIdentityPools/...`), não o ID curto `github-pool`.
 - **No WIF, o provider decide quem entra e o binding decide o que quem entrou pode usar.** Sem a condição do repositório no provider, qualquer repositório do GitHub poderia tentar; sem o `workloadIdentityUser`, ninguém consegue assumir a service account.
+- **Um check que passa não avisa ninguém.** O uptime check só registra o resultado; quem manda o e-mail é a alert policy, que lê a métrica do check e usa o canal de notificação. O alerta de uptime foi testado de verdade, derrubando o acesso público.
+- **Alerta de métrica responde sempre a quatro perguntas:** qual métrica olhar (`filter`), como resumir num número (`aggregations`), qual número é ruim (`comparison` e `threshold_value`) e por quanto tempo (`duration`). Os limites são uma troca entre avisar cedo (mais e-mails à toa) e avisar tarde.
+- **Credenciais de usuário (ADC) precisam de um projeto de cota para algumas APIs.** A API de budgets respondeu `403 SERVICE_DISABLED` num projeto que não era o meu; `user_project_override` resolveu, e em seguida o Terraform passou a exigir `cloudresourcemanager` e `serviceusage` ligadas no meu projeto.
+- **A moeda do orçamento tem de ser a da conta de billing.** Com `USD` numa conta em BRL, o Google devolveu só `400 invalid argument`.
 - **Confira o projeto ativo do `gcloud`.** Um deploy sem `--project` tentou criar um serviço novo em outro projeto; o erro de permissão enganava, e a pista estava na linha do projeto no próprio log.
 
 ---
