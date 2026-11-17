@@ -154,12 +154,12 @@ resource "google_cloud_run_v2_service" "default" {
   lifecycle {
     ignore_changes = [
       template[0].containers[0].image,
+      client,
+      client_version
     ]
   }
 
-  # O Cloud Run confere o acesso aos segredos ao criar a revisão: as permissões
-  # precisam existir antes. Nenhum atributo deste recurso as referencia, por isso
-  # a ordem é declarada aqui.
+
   depends_on = [
     google_secret_manager_secret_iam_member.api_db_url_accessor,
     google_secret_manager_secret_iam_member.auth_secret_accessor,
@@ -168,22 +168,22 @@ resource "google_cloud_run_v2_service" "default" {
 }
 
 resource "google_cloud_run_v2_job" "default" {
-  name     = "migrate-database"
-  location = var.region
+  name                = "migrate-database"
+  location            = var.region
   deletion_protection = false
-  
-  
+
+
 
   template {
     template {
 
-      max_retries = 0
+      max_retries     = 0
       service_account = google_service_account.api_sa.email
 
       containers {
         image = var.container_image
-        
-        
+
+
         command = ["node_modules/.bin/prisma"]
         args    = ["migrate", "deploy"]
 
@@ -198,28 +198,30 @@ resource "google_cloud_run_v2_job" "default" {
         }
       }
 
-       vpc_access {
-      egress = "PRIVATE_RANGES_ONLY"
-      network_interfaces {
-        network    = var.network
-        subnetwork = var.subnetwork
-      }
-      
-    }
-    
-    }
-    
+      vpc_access {
+        egress = "PRIVATE_RANGES_ONLY"
+        network_interfaces {
+          network    = var.network
+          subnetwork = var.subnetwork
+        }
 
-    
+      }
+
+    }
+
+
+
   }
   lifecycle {
     ignore_changes = [
       template[0].template[0].containers[0].image,
+      client,
+      client_version,
     ]
   }
 
-depends_on = [google_secret_manager_secret_iam_member.api_db_url_accessor,
-     ]
+  depends_on = [google_secret_manager_secret_iam_member.api_db_url_accessor,
+  ]
 
 
 

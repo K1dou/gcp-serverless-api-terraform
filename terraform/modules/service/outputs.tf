@@ -19,5 +19,5 @@ output "api_sa_name" {
 
 output "repository_name" {
   value = google_artifact_registry_repository.my_repo.repository_id
-  
+
 }

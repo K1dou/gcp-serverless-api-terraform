@@ -15,9 +15,11 @@ variable "bucket_name" {
 }
 
 variable "github_repository" {
-  type = string
+  type        = string
+  description = "Repositório GitHub aceito pelo provider do WIF, no formato dono/repo."
 }
 
 variable "github_repository_owner_id" {
-  type = string
+  type        = string
+  description = "ID numérico do dono do repositório no GitHub; o provider rejeita tokens de outros donos."
 }

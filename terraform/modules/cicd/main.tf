@@ -5,33 +5,33 @@ resource "google_service_account" "deploy_sa" {
 
 
 resource "google_cloud_run_v2_service_iam_member" "iam_access_to_cloudrun_api" {
-  project = var.project
+  project  = var.project
   location = var.region
-  name = var.cloud_run_name
-  role = "roles/run.developer"
-  member = "serviceAccount:${google_service_account.deploy_sa.email}"
+  name     = var.cloud_run_name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:${google_service_account.deploy_sa.email}"
 }
 
 resource "google_cloud_run_v2_job_iam_member" "iam_access_to_migrate_database" {
-  project = var.project
+  project  = var.project
   location = var.region
-  name = var.migrate_job_name
-  role = "roles/run.developer"
-  member = "serviceAccount:${google_service_account.deploy_sa.email}"
+  name     = var.migrate_job_name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:${google_service_account.deploy_sa.email}"
 }
 
 resource "google_artifact_registry_repository_iam_member" "iam_access_to_repository_api_dev_repository" {
-  project =var.project
-  location = var.region
+  project    = var.project
+  location   = var.region
   repository = var.repository_name
-  role = "roles/artifactregistry.writer"
-  member = "serviceAccount:${google_service_account.deploy_sa.email}"
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.deploy_sa.email}"
 }
 
 resource "google_service_account_iam_member" "iam_sa_as_user_sa" {
   service_account_id = var.api_sa_name
   role               = "roles/iam.serviceAccountUser"
-  member = "serviceAccount:${google_service_account.deploy_sa.email}"
+  member             = "serviceAccount:${google_service_account.deploy_sa.email}"
 }
 
 

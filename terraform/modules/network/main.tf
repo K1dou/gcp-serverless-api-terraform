@@ -7,7 +7,7 @@ resource "google_compute_network" "vpc_network" {
 
 resource "google_compute_subnetwork" "subnet_network" {
   name          = var.subnet_network_name
-  project = var.project_name
+  project       = var.project_name
   ip_cidr_range = var.ip_cidr_range
   region        = var.region
   network       = google_compute_network.vpc_network.id
@@ -25,12 +25,12 @@ resource "google_compute_firewall" "fw_database_ingress" {
 
 
   allow {
-    protocol  = "tcp"
-    ports     = [5432]
+    protocol = "tcp"
+    ports    = [5432]
   }
 
-  source_ranges = [ google_compute_subnetwork.subnet_network.ip_cidr_range ]
-  
+  source_ranges = [google_compute_subnetwork.subnet_network.ip_cidr_range]
+
 }
 
 resource "google_compute_firewall" "deny_all_external_ingress" {
