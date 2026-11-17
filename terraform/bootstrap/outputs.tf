@@ -4,10 +4,11 @@ output "bucket_name" {
 }
 
 output "pool_name" {
-  value = google_iam_workload_identity_pool.github.name
-
+  description = "Nome completo do Workload Identity Pool, lido pelo dev via remote state."
+  value       = google_iam_workload_identity_pool.github.name
 }
 
 output "provider_name" {
-  value = google_iam_workload_identity_pool_provider.github.name
+  description = "Nome completo do provider do WIF, usado na variável WIF_PROVIDER do GitHub Actions."
+  value       = google_iam_workload_identity_pool_provider.github.name
 }

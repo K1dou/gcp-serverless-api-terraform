@@ -53,15 +53,27 @@ module "service" {
 }
 
 module "cicd" {
-  source                     = "../../modules/cicd"
-  project                    = var.project_id
-  region                     = var.region
-  github_repository          = "K1dou/gcp-serverless-api-terraform"
-  pool_name = data.terraform_remote_state.bootstrap.outputs.pool_name
-  repository_name  = module.service.repository_name
-  migrate_job_name = module.service.migrate_job_name
-  cloud_run_name   = module.service.cloud_run_name
-  api_sa_name      = module.service.api_sa_name
- 
+  source            = "../../modules/cicd"
+  project           = var.project_id
+  region            = var.region
+  github_repository = "K1dou/gcp-serverless-api-terraform"
+  pool_name         = data.terraform_remote_state.bootstrap.outputs.pool_name
+  repository_name   = module.service.repository_name
+  migrate_job_name  = module.service.migrate_job_name
+  cloud_run_name    = module.service.cloud_run_name
+  api_sa_name       = module.service.api_sa_name
+
+  depends_on = [google_project_service.apis]
+}
+
+module "observability" {
+  source = "../../modules/observability"
+
+  project        = var.project_id
+  alert_email    = var.alert_email
+  api_final_url  = module.service.cloud_run_url
+  cloud_run_name = module.service.cloud_run_name
+  
+
   depends_on = [google_project_service.apis]
 }
