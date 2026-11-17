@@ -17,3 +17,4 @@ variable "alert_email" {
   type        = string
   description = "E-mail que recebe os alertas. Fica no terraform.tfvars, fora do Git."
 }
+

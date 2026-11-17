@@ -73,7 +73,7 @@ module "observability" {
   alert_email    = var.alert_email
   api_final_url  = module.service.cloud_run_url
   cloud_run_name = module.service.cloud_run_name
-  
+
 
   depends_on = [google_project_service.apis]
 }

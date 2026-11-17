@@ -81,3 +81,5 @@ resource "google_monitoring_alert_policy" "api_5xx" {
 
   notification_channels = [google_monitoring_notification_channel.basic.id]
 }
+
+

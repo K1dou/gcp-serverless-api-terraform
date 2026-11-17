@@ -9,6 +9,8 @@ Cada ADR responde a uma pergunta: **por que fizemos assim?** Ele guarda o contex
 | [0003](0003-imagem-fora-do-terraform.md) | A imagem da aplicação é trocada fora do Terraform | Aceita |
 | [0004](0004-ci-cd-com-workload-identity-federation.md) | CI/CD com Workload Identity Federation, sem chave de service account | Aceita |
 | [0005](0005-pool-do-wif-no-bootstrap.md) | Pool e provider do WIF no `bootstrap` | Aceita |
+| [0006](0006-alertas-de-uptime-e-5xx-por-email.md) | Alertas de uptime e de erros 5xx, avisados por e-mail | Aceita |
+| [0007](0007-orcamento-no-bootstrap.md) | Orçamento de custos no `bootstrap`, com canal de e-mail próprio | Aceita |
 
 ## Formato
 

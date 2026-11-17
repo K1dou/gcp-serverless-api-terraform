@@ -81,7 +81,11 @@ locals {
   apis = [
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
-    "sts.googleapis.com"
+    "sts.googleapis.com",
+    "billingbudgets.googleapis.com",
+    "monitoring.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "serviceusage.googleapis.com"
   ]
 }
 
@@ -91,4 +95,47 @@ resource "google_project_service" "apis" {
   project            = var.project_id
   service            = each.value
   disable_on_destroy = false
+}
+
+
+
+resource "google_monitoring_notification_channel" "budget" {
+  display_name = "Alertas de custo"
+  type         = "email"
+  labels = {
+    email_address = var.alert_email
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+
+
+resource "google_billing_budget" "budget" {
+  billing_account = var.billing_account
+  display_name    = "Orçamento mensal R$ 50"
+
+  amount {
+    specified_amount {
+      currency_code = "BRL"
+      units         = "50"
+    }
+  }
+
+  threshold_rules {
+    threshold_percent = 0.5
+  }
+  threshold_rules {
+    threshold_percent = 0.9
+    spend_basis       = "FORECASTED_SPEND"
+  }
+
+  all_updates_rule {
+    monitoring_notification_channels = [
+      google_monitoring_notification_channel.budget.id,
+    ]
+    disable_default_iam_recipients = true
+  }
+
+  depends_on = [google_project_service.apis]
 }

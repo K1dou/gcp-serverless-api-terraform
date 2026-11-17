@@ -23,3 +23,13 @@ variable "github_repository_owner_id" {
   type        = string
   description = "ID numérico do dono do repositório no GitHub; o provider rejeita tokens de outros donos."
 }
+
+variable "billing_account" {
+  type        = string
+  description = "ID da conta de billing (formato XXXXXX-XXXXXX-XXXXXX) onde o orçamento é criado. Fica no terraform.tfvars, fora do Git."
+}
+
+variable "alert_email" {
+  type        = string
+  description = "E-mail que recebe os alertas de custo. Fica no terraform.tfvars, fora do Git."
+}
