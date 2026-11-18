@@ -25,7 +25,7 @@ O ambiente `dev` existe e o objetivo da fase 7 era criar o `prod` reaproveitando
 ## Consequências
 - **Bom:** o `prod` foi criado com `46 to add, 0 to change, 0 to destroy` e o primeiro deploy pelo pipeline funcionou, com `/health` respondendo `{"status":"ok"}`. Módulos reaproveitados sem alteração.
 - **Proteção do `prod`:** só o `main` pode usar o Environment, e o deploy exige um clique. Sem revisor obrigatório, quem tem acesso de escrita ao repositório pode disparar o deploy do `prod`.
-- **Mesmo pool de WIF para os dois projetos:** o provider decide quem entra (este repositório); o binding da `deploy-sa` de cada projeto decide o que entra pode usar. Restringir o `prod` a um `assertion.environment` ou ao `ref` do `main` continua como melhoria.
+- **Mesmo pool de WIF para os dois projetos:** o provider decide quem entra (este repositório); o binding da `deploy-sa` de cada projeto decide o que quem entrou pode usar. Restringir o `prod` a um `assertion.environment` ou ao `ref` do `main` continua como melhoria.
 - **Custo:** dois ambientes com Cloud SQL e NAT cobram o dobro por hora enquanto estiverem de pé. O combinado é criar, demonstrar e destruir no mesmo dia.
 - **Limitação:** o módulo `observability` tem o nome do canal fixo ("Alertas API dev"), que aparece também no `prod`. É só texto, mas é enganoso.
 - **Limitação:** o `terraform apply` do `prod` continua manual, e os dois ambientes compartilham o mesmo bucket de state, então quem lê o state do `dev` também lê o do `prod`.

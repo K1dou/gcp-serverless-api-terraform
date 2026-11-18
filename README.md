@@ -8,7 +8,7 @@ Uma API Node.js rodando no **Google Cloud Run**, com banco **Cloud SQL sem IP p�
 
 Este projeto existe para mostrar, na prática, boas práticas de infraestrutura na nuvem: código versionado, ambientes isolados, menor privilégio, nenhum segredo no repositório e um ciclo de `apply` e `destroy` que funciona do zero.
 
-> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` roda no Cloud Run, conectada ao banco privado. O deploy é automático: um push na `main` dispara um pipeline do GitHub Actions que autentica por Workload Identity Federation (sem chave de service account), publica a imagem, roda as migrations e faz o deploy. A observabilidade também está pronta: um uptime check, alertas de queda e de erros 5xx e um orçamento de custos avisam por e-mail. O ambiente de produção (`envs/prod`) reaproveita os mesmos módulos num projeto GCP separado e é implantado por um workflow manual (veja o [roadmap](#roadmap)).
+> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` roda no Cloud Run, conectada ao banco privado. O deploy do dev é automático: um push na `main` dispara um pipeline do GitHub Actions que autentica por Workload Identity Federation (sem chave de service account), publica a imagem, roda as migrations e faz o deploy. A observabilidade também está pronta: um uptime check, alertas de queda e de erros 5xx e um orçamento de custos avisam por e-mail. O ambiente de produção (`envs/prod`) reaproveita os mesmos módulos num projeto GCP separado e é implantado por um workflow manual (veja o [roadmap](#roadmap)).
 
 ---
 
