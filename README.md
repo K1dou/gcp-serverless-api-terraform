@@ -8,7 +8,7 @@ Uma API Node.js rodando no **Google Cloud Run**, com banco **Cloud SQL sem IP p�
 
 Este projeto existe para mostrar, na prática, boas práticas de infraestrutura na nuvem: código versionado, ambientes isolados, menor privilégio, nenhum segredo no repositório e um ciclo de `apply` e `destroy` que funciona do zero.
 
-> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` roda no Cloud Run, conectada ao banco privado. O deploy é automático: um push na `main` dispara um pipeline do GitHub Actions que autentica por Workload Identity Federation (sem chave de service account), publica a imagem, roda as migrations e faz o deploy. A observabilidade também está pronta: um uptime check, alertas de queda e de erros 5xx e um orçamento de custos avisam por e-mail. O ambiente de produção é a próxima fase (veja o [roadmap](#roadmap)).
+> **Status:** a infraestrutura de rede, banco e Cloud Run está pronta, aplicada e testada no GCP, e a API de `app/` roda no Cloud Run, conectada ao banco privado. O deploy é automático: um push na `main` dispara um pipeline do GitHub Actions que autentica por Workload Identity Federation (sem chave de service account), publica a imagem, roda as migrations e faz o deploy. A observabilidade também está pronta: um uptime check, alertas de queda e de erros 5xx e um orçamento de custos avisam por e-mail. O ambiente de produção (`envs/prod`) reaproveita os mesmos módulos num projeto GCP separado e é implantado por um workflow manual (veja o [roadmap](#roadmap)).
 
 ---
 
@@ -46,7 +46,7 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 | 3 | Uma service account por workload (`api-sa`) | SA padrão do Compute | Menor privilégio: a SA padrão costuma ter papel Editor |
 | 4 | Senha do banco no Secret Manager | Variável de ambiente no código | Segredo versionado, auditável e fora do repositório |
 | 5 | State em bucket GCS versionado | State local ou no Git | Locking, histórico e nenhum segredo no Git |
-| 6 | Um diretório raiz por ambiente (`envs/dev`, futuramente `envs/prod`) | Um diretório só com arquivos de variáveis | State isolado: um `apply` no dev nunca toca o prod |
+| 6 | Um diretório raiz por ambiente (`envs/dev` e `envs/prod`) | Um diretório só com arquivos de variáveis | State isolado: um `apply` no dev nunca toca o prod |
 | 7 | Módulo `bootstrap` separado | Criar o bucket do state à mão | Resolve o ovo e a galinha de forma reproduzível |
 | 8 | Migrations por Cloud Run Job dentro da VPC | Rodar do CI ou do notebook | O banco é privado: só quem está na VPC o alcança; o pipeline apenas dispara o job |
 | 9 | Direct VPC egress | Serverless VPC Access connector | Sem recurso extra nem custo fixo do conector |
@@ -55,12 +55,14 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 | 12 | Pool e provider do WIF no `bootstrap` | Pool dentro do ambiente `dev` | O `destroy` do dev não apaga o pool, e um pool apagado fica com o ID reservado por cerca de 30 dias |
 | 13 | Alertas de uptime (mais de 1 local falhando) e de 5xx (qualquer erro), por e-mail | Limites altos, ou alertar com 1 local | Um 5xx é falha do servidor e um e-mail à toa custa pouco; já o uptime exige 2 locais para não alarmar por falha de rede de um só |
 | 14 | Orçamento no `bootstrap`, com canal de e-mail próprio | Orçamento dentro do `dev` ou só no console | O `destroy` do dev não apaga o alerta de custo, e tudo fica no código |
+| 15 | Produção em projeto GCP separado, state no mesmo bucket com outro prefixo | Mesmo projeto com sufixo nos nomes | Os módulos têm nomes fixos; em projetos diferentes eles não colidem e os módulos ficam intactos |
+| 16 | Deploy do prod por workflow manual com GitHub Environment (`prod`) | Um único conjunto de variáveis no repositório | Variáveis próprias do prod, restrição ao `main` e deploy só por clique |
 
 ## Estrutura do repositório
 
 ```
 .
-├── .github/workflows/           # pipeline de deploy (GitHub Actions)
+├── .github/workflows/           # deploy.yml (dev, a cada push) e deploy-prod.yml (prod, manual)
 ├── app/                         # API Express + Prisma + testes
 ├── docs/
 │   ├── adr/                     # registros de decisão de arquitetura
@@ -74,7 +76,8 @@ Cada escolha tem uma alternativa descartada e um motivo. Esse é o resumo; os re
 │   │   ├── cicd/                # deploy-sa e permissões do pipeline
 │   │   └── observability/       # canal de e-mail, uptime check, alertas de queda e de 5xx
 │   └── envs/
-│       └── dev/                 # chama os módulos, state próprio
+│       ├── dev/                 # chama os módulos, state próprio
+│       └── prod/                # os mesmos módulos, outro projeto GCP e state próprio
 └── README.md
 ```
 
@@ -99,7 +102,9 @@ Cada pasta que roda `apply` (`bootstrap` e `envs/*`) tem o seu próprio `version
 - O acesso humano ao banco (consultas) ainda não existe: o banco só tem IP privado. Um bastion com túnel IAP é uma melhoria planejada.
 - O alerta de 5xx só foi validado pelo `apply`; o de uptime foi testado derrubando o acesso público. Já o `/health` não consulta o banco, então uma queda do banco só aparece como 5xx nas rotas que dependem dele.
 - O orçamento só avisa, não bloqueia o gasto, e não tem aviso de 100% do gasto real.
-- O ambiente `prod` ainda não existe.
+- O Environment `prod` só aceita o `main`, mas **não exige aprovação de revisor**: a tela do GitHub não ofereceu essa regra neste repositório privado (provavelmente limite do plano; não confirmei). Quem tem acesso de escrita pode disparar o deploy do prod.
+- O módulo `observability` tem o nome do canal fixo ("Alertas API dev"), que aparece também no prod.
+- Dev e prod dividem o mesmo bucket de state e o mesmo pool de WIF.
 
 ## Como rodar
 
@@ -213,6 +218,18 @@ terraform destroy
 >
 > **Observação sobre o `destroy`:** o Google libera com atraso o endereço reservado pelo Direct VPC egress e a conexão privada do Cloud SQL. Se o `destroy` falhar com "resource in use", espere um pouco e rode de novo. O nome de uma instância do Cloud SQL apagada também pode ficar reservado por cerca de uma semana.
 
+### Ambiente prod
+O `prod` usa os mesmos módulos em **outro projeto GCP** (crie o projeto e ligue o faturamento antes). Em `terraform/envs/prod/`, o `backend.hcl` aponta para o mesmo bucket com `prefix = "envs/prod"`, e o `terraform.tfvars` tem o `project_id` do projeto novo:
+
+```bash
+cd terraform/envs/prod
+terraform init -backend-config=backend.hcl
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+O deploy da API usa o workflow **Deploy API (prod)**, que só roda por clique (**Actions, Run workflow**, no `main`) e lê as variáveis do **GitHub Environment `prod`** (Settings, Environments): `GCP_PROJECT_ID`, `GCP_REGION`, `WIF_PROVIDER` e `DEPLOY_SA_EMAIL`, com os valores do projeto novo (os dois últimos saem do `terraform output` do prod). O Environment também limita o uso ao branch `main`. Depois, destrua o ambiente: o custo por hora vale para os dois.
+
 ### A API localmente
 Crie `.env` e `.env.test` em `app/` com `DATABASE_URL`, `AUTH_SECRET`, `AUTH_SECRET_EXPIRES_IN`, `AUTH_REFRESH_SECRET` e `AUTH_REFRESH_SECRET_EXPIRES_IN` (o `.env.test` aponta para o banco de teste do `docker-compose.yml`).
 
@@ -242,7 +259,7 @@ API de vendas com autenticação e controle de acesso por papel:
 | 4 | Cloud SQL privado, segredos e migrations por Job | Feito: API conectada ao banco privado |
 | 5 | CI/CD com GitHub Actions e Workload Identity Federation (deploy sem chave) | Feito: push na `main` faz build, migrations e deploy |
 | 6 | Observabilidade: uptime check, alertas de queda e de erro 5xx, e orçamento | Feito: avisos por e-mail (os logs do Cloud Run já vão para o Cloud Logging por padrão) |
-| 7 | Ambiente de produção reaproveitando os módulos | Planejado |
+| 7 | Ambiente de produção reaproveitando os módulos | Feito: projeto GCP separado, 46 recursos criados e deploy pelo pipeline (`/health` ok) |
 
 ## O que este projeto me ensinou
 
@@ -258,6 +275,10 @@ API de vendas com autenticação e controle de acesso por papel:
 - **Alerta de métrica responde sempre a quatro perguntas:** qual métrica olhar (`filter`), como resumir num número (`aggregations`), qual número é ruim (`comparison` e `threshold_value`) e por quanto tempo (`duration`). Os limites são uma troca entre avisar cedo (mais e-mails à toa) e avisar tarde.
 - **Credenciais de usuário (ADC) precisam de um projeto de cota para algumas APIs.** A API de budgets respondeu `403 SERVICE_DISABLED` num projeto que não era o meu; `user_project_override` resolveu, e em seguida o Terraform passou a exigir `cloudresourcemanager` e `serviceusage` ligadas no meu projeto.
 - **A moeda do orçamento tem de ser a da conta de billing.** Com `USD` numa conta em BRL, o Google devolveu só `400 invalid argument`.
+- **Projeto separado resolve nomes fixos sem mexer nos módulos.** Os módulos têm `api-sa`, `deploy-sa` e outros nomes escritos no código; em dois projetos eles não colidem, e o `apply` do `prod` criou 46 recursos sem alterar um módulo.
+- **O pool do WIF pode ficar em outro projeto.** O vínculo da `deploy-sa` do `prod` com o pool do `bootstrap` foi aceito no `apply`, e o primeiro deploy do pipeline provou que a troca de token funciona entre projetos.
+- **Variável de Environment vale mais que a do repositório, mas só para o job que declara `environment`.** O mesmo workflow serve a dois ambientes; uma linha (`environment: prod`) decide de onde vêm os valores e quem pode rodar.
+- **O `destroy` pode travar mesmo sem o banco.** O peering do Cloud SQL continuou "em uso" com zero instâncias no projeto (`gcloud sql instances list` vazio); apagar o peering pelo `gcloud compute networks peerings delete` foi aceito, e só então o Terraform pôde seguir.
 - **Confira o projeto ativo do `gcloud`.** Um deploy sem `--project` tentou criar um serviço novo em outro projeto; o erro de permissão enganava, e a pista estava na linha do projeto no próprio log.
 
 ---
